@@ -47,6 +47,9 @@ namespace PBD
 		Real m_nextFrameTime;
 		unsigned int m_frameCounter;
 
+		bool m_doForceBasedInterpolation;
+		Real m_interpolatedHairStepSize;
+
 
 		virtual void initParameters();
 
@@ -94,6 +97,9 @@ namespace PBD
 		static int EXPORT_OBJ;
 		static int EXPORT_PLY;
 		static int EXPORT_FPS;
+
+		static int INTERPOLATION_METHOD;
+		static int INTERPOLATED_HAIR_STEP_SIZE;
 
 		DemoBase();
 		virtual ~DemoBase();

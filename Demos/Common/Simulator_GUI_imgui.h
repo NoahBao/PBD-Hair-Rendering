@@ -51,6 +51,7 @@ namespace PBD
 			void initImguiParameters();
 
 			void switchPause();
+			void switchInterpolationMethod();
 			static void switchDrawMode();
 			
 			void destroy();

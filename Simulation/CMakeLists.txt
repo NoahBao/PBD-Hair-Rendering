@@ -8,6 +8,8 @@ add_library(Simulation
 		CubicSDFCollisionDetection.h
 		DistanceFieldCollisionDetection.cpp
 		DistanceFieldCollisionDetection.h
+		HairInterpolation.cpp
+		HairInterpolation.h
 		IDFactory.cpp
 		IDFactory.h
 		LineModel.cpp

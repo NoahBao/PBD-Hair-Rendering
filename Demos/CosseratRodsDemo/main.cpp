@@ -13,6 +13,7 @@
 #include "Demos/Common/DemoBase.h"
 #include "Simulation/Simulation.h"
 #include "../Common/imguiParameters.h"
+#include "Simulation/HairInterpolation.h"
 
 // Enable memory leak detection
 #if defined(_DEBUG) && !defined(EIGEN_ALIGN)
@@ -23,6 +24,7 @@ using namespace PBD;
 using namespace Eigen;
 using namespace std;
 using namespace Utilities;
+using namespace HairInterpolation;
 
 void timeStep ();
 void buildModel ();
@@ -30,12 +32,22 @@ void createHelix(const Vector3r &position, const Matrix3r &orientation, Real rad
 void render ();
 void reset();
 
+// list of all rendered hairs in between guide hairs
+vector<RenderedHair*> renderedHairs;
+// true if doing force-based interpolation
+// false if doing position-based interpolation
+const bool doForceBasedInterpolation = true;
+// spacing (in x and z axes) between each rendered hair
+// bigger step size means sparser rendered hairs
+// smaller step size means denser rendered hairs
+// const Real rhStepSize = 1.0;
+
 DemoBase *base;
 const unsigned int nParticles = 50;
 const Real helixRadius = 0.5;
 const Real helixHeight = -5.0;
-const Real helixTotalAngle = static_cast<Real>(10.0*M_PI);
-const Matrix3r helixOrientation = AngleAxisr(-static_cast<Real>(0.5 * M_PI), Vector3r(0,1,0)).toRotationMatrix();
+const Real helixTotalAngle = static_cast<Real>(2.0*M_PI);
+const Matrix3r helixOrientation = AngleAxisr(-static_cast<Real>(-0.50 * M_PI), Vector3r(1,0,0)).toRotationMatrix();
 bool drawFrames = false;
 
 
@@ -116,13 +128,56 @@ void timeStep ()
 
 		base->step();
 	}
+
+	// interpolate and reconstruct all rendered hairs
+	for(RenderedHair* rh : renderedHairs) {
+		rh->timeStep();
+	}
 }
 
 void buildModel ()
 {
 	TimeManager::getCurrent ()->setTimeStepSize (static_cast<Real>(0.005));
 	
-	createHelix(Vector3r(0, 0, 0), helixOrientation, helixRadius, helixHeight, helixTotalAngle, nParticles);
+	Vector3r ghRoot1(0, 0, 5);
+	Vector3r ghRoot2(-2.5 * std::pow(3, 0.5), 0, -2.5);
+	Vector3r ghRoot3(2.5 * std::pow(3, 0.5), 0, -2.5);
+	createHelix(ghRoot1, helixOrientation, helixRadius, helixHeight, helixTotalAngle, nParticles);
+	createHelix(ghRoot2, helixOrientation, helixRadius * 2, helixHeight, helixTotalAngle, nParticles);
+	createHelix(ghRoot3, helixOrientation, helixRadius, helixHeight * 2, helixTotalAngle / 2, nParticles);
+	// createHelix(ghRoot1, helixOrientation, helixRadius, helixHeight, helixTotalAngle, nParticles);
+	// createHelix(ghRoot2, helixOrientation, helixRadius, helixHeight, helixTotalAngle, nParticles);
+	// createHelix(ghRoot3, helixOrientation, helixRadius, helixHeight, helixTotalAngle, nParticles);
+
+	
+	// The root we specify ends up being the center of the helix,
+	// but that's not where the first point lies.
+	// The first point lies a distance (helixRadius) in the positive x-direction
+	ghRoot1 += Vector3r(helixRadius, 0, 0);
+	ghRoot2 += Vector3r(helixRadius * 2, 0, 0);
+	ghRoot3 += Vector3r(helixRadius, 0, 0);
+
+	renderedHairs = {};
+	// put rendered hairs in exact same spots as guide hairs to see how they line up
+	renderedHairs.push_back(new RenderedHair(ghRoot1));
+	renderedHairs.push_back(new RenderedHair(ghRoot2));
+	renderedHairs.push_back(new RenderedHair(ghRoot3));
+
+	const Real rhStepSize = base->getValue<Real>(DemoBase::INTERPOLATED_HAIR_STEP_SIZE);
+
+	Real slope1 = (ghRoot1.z() - ghRoot2.z()) / (ghRoot1.x() - ghRoot2.x());
+	Real slope2 = (ghRoot3.z() - ghRoot1.z()) / (ghRoot3.x() - ghRoot1.x());
+	const Real xStart = rhStepSize * std::ceil(ghRoot2.x() / rhStepSize);
+	const Real xEnd = rhStepSize * std::floor(ghRoot3.x() / rhStepSize);
+	for(Real x = xStart; x <= xEnd; x += rhStepSize) {
+		Real zStart = ghRoot2.z();
+		Real zEnd = x <= ghRoot1.x()
+			? slope1 * (x - ghRoot2.x()) + ghRoot2.z()
+			: slope2 * (x - ghRoot3.x()) + ghRoot3.z();
+		for(Real z = zStart; z <= zEnd; z += rhStepSize) {
+			renderedHairs.push_back(new RenderedHair(Vector3r(x, 0, z)));
+		}
+	}
 }
 
 void renderLineModels()
@@ -135,6 +190,51 @@ void renderLineModels()
 	float green[4] = { 0.0f, 0.8f, 0.0f, 1 };
 	float blue[4] = { 0.0f, 0.0f, 0.8f, 1 };
 
+	// position-based interpolated points of each rendered hair
+	// pIP[r] = list of vertex positions for rendered hair r
+	vector<vector<Vector3r>> positionInterpolatedPoints(renderedHairs.size());
+	for(int rhInd = 0; rhInd < positionInterpolatedPoints.size(); rhInd++) {
+		positionInterpolatedPoints[rhInd] = vector<Vector3r>(renderedHairs[rhInd]->currState->positions.size());
+		positionInterpolatedPoints[rhInd][0] = renderedHairs[rhInd]->root;
+	}
+	
+	// store roots of all guide hairs
+	vector<Vector3r> guideRoots(model->getLineModels().size());
+	for (unsigned int ghInd = 0; ghInd < model->getLineModels().size(); ghInd++)
+	{
+		LineModel *lineModel = model->getLineModels()[ghInd];
+		
+		const unsigned int indexOffset = lineModel->getIndexOffset();
+		const unsigned int rootIndex = lineModel->getEdges()[0].m_vert[0] + indexOffset;
+		const Vector3r &root = pd.getPosition(rootIndex);
+		guideRoots[ghInd] = root;
+	}
+
+	// barycentric weights of each guide hair for positioning rendered hairs
+	// weights[r][g] = weight of guide hair g on rendered hair r
+	vector<vector<Real>> guideWeights(renderedHairs.size());
+	for(unsigned int i = 0; i < guideWeights.size(); i++) {
+		guideWeights[i] = vector<Real>(model->getLineModels().size());
+	}
+
+	// calculate denominator in weights
+	const Real lambdaDenom = (guideRoots[0] - guideRoots[2]).cross(guideRoots[1] - guideRoots[2]).norm();
+
+	// calculate barycentric weights of each guide hair for each rendered hair
+	for(unsigned int rhInd = 0; rhInd < guideWeights.size(); rhInd++) {
+		for (unsigned int ghInd = 0; ghInd < model->getLineModels().size(); ghInd++)
+		{
+			LineModel *lineModel = model->getLineModels()[ghInd];
+			const Vector3r prevRoot = guideRoots[(ghInd + 3 - 1) % 3];
+			const Vector3r currRoot = guideRoots[(ghInd + 3 + 0) % 3];
+			const Vector3r nextRoot = guideRoots[(ghInd + 3 + 1) % 3];
+			const Real lambda = (renderedHairs[rhInd]->root - prevRoot).cross(nextRoot - prevRoot).norm() / lambdaDenom;
+			guideWeights[rhInd][ghInd] = lambda;
+		}
+	}
+	
+	// render all guide hairs while also interpolating each
+	// rendered hair (if user wants to do position-based interpolation)
 	for (unsigned int i = 0; i < model->getLineModels().size(); i++)
 	{
 		LineModel *lineModel = model->getLineModels()[i];
@@ -154,6 +254,14 @@ void renderLineModels()
 			if( e == lineModel->getEdges().size() -1 ) MiniGL::drawSphere(v2, 0.07f, blue);
 			if(drawFrames) MiniGL::drawCylinder(v1, v2, blue, 0.01f);
 			else MiniGL::drawCylinder(v1, v2, blue, 0.07f);
+			
+			// position-based interpolation
+			for(unsigned int rhInd = 0; rhInd < positionInterpolatedPoints.size(); rhInd++) {
+				if(i == 0) {
+					positionInterpolatedPoints[rhInd][e+1] = Vector3r(0, 0, 0);
+				}
+				positionInterpolatedPoints[rhInd][e+1] += guideWeights[rhInd][i] * v2;
+			}
 
 			//draw coordinate frame at the center of the edges
 			if(drawFrames)
@@ -167,8 +275,29 @@ void renderLineModels()
 				MiniGL::drawCylinder(vm, vm + d2, green, 0.01f);
 				MiniGL::drawCylinder(vm, vm + d3, blue,  0.01f);
 			}
-		}		
+		}
 	}
+
+	if(base->getValue<bool>(DemoBase::INTERPOLATION_METHOD)) {
+		// FORCE-BASED INTERPOLATION DRAWING
+		for(RenderedHair* rh : renderedHairs) {
+			for(unsigned int i = 0; i < rh->currState->positions.size() - 1; ++i) {
+				const Vector3r v1 = rh->currState->positions[i];
+				const Vector3r v2 = rh->currState->positions[i + 1];
+				MiniGL::drawCylinder(v1, v2, blue, 0.01f);
+			}
+		}
+	} else {
+		// POSITION-BASED INTERPOLATION DRAWING
+		for(unsigned int rhInd = 0; rhInd < positionInterpolatedPoints.size(); rhInd++) {
+			for(unsigned int vInd = 0; vInd < positionInterpolatedPoints[rhInd].size() - 1; vInd++) {
+				const Vector3r v1 = positionInterpolatedPoints[rhInd][vInd];
+				const Vector3r v2 = positionInterpolatedPoints[rhInd][vInd + 1];
+				MiniGL::drawCylinder(v1, v2, blue, 0.01f);
+			}
+		}
+	}
+
 }
 
 void render ()

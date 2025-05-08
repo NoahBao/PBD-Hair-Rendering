@@ -137,6 +137,7 @@ void Simulator_GUI_imgui::initImgui()
 	MiniGL::addKeyFunc('r', std::bind(&DemoBase::reset, m_base));
 	MiniGL::addKeyFunc('w', Simulator_GUI_imgui::switchDrawMode);
 	MiniGL::addKeyFunc(' ', std::bind(&Simulator_GUI_imgui::switchPause, this));
+	MiniGL::addKeyFunc('f', std::bind(&Simulator_GUI_imgui::switchInterpolationMethod, this));
 	MiniGL::setClientDestroyFunc(std::bind(&Simulator_GUI_imgui::destroy, this));
 
 	// apply user settings from ini file 
@@ -228,6 +229,8 @@ void Simulator_GUI_imgui::createMenuBar()
 		{
 			if (ImGui::MenuItem("Pause/run simulation", "Space"))
 				switchPause();
+			if (ImGui::MenuItem("Use force-based interpolation (f)"))
+				switchInterpolationMethod();
 			ImGui::EndMenu();
 		}
 		if (ImGui::BeginMenu("GUI"))
@@ -415,6 +418,11 @@ void Simulator_GUI_imgui::destroy()
 void Simulator_GUI_imgui::switchPause()
 {
 	m_base->setValue(DemoBase::PAUSE, !m_base->getValue<bool>(DemoBase::PAUSE));
+}
+
+void Simulator_GUI_imgui::switchInterpolationMethod()
+{
+	m_base->setValue(DemoBase::INTERPOLATION_METHOD, !m_base->getValue<bool>(DemoBase::INTERPOLATION_METHOD));
 }
 
 void Simulator_GUI_imgui::switchDrawMode()

@@ -38,6 +38,9 @@ int DemoBase::EXPORT_OBJ = -1;
 int DemoBase::EXPORT_PLY = -1;
 int DemoBase::EXPORT_FPS = -1;
 
+int DemoBase::INTERPOLATION_METHOD = -1;
+int DemoBase::INTERPOLATED_HAIR_STEP_SIZE = -1;
+
  
 DemoBase::DemoBase()
 {
@@ -65,6 +68,9 @@ DemoBase::DemoBase()
 	m_nextFrameTime = 0.0;
 	m_frameCounter = 1;
 
+	m_doForceBasedInterpolation = true;
+	m_interpolatedHairStepSize = 1.0;
+
 	m_gui = new Simulator_GUI_imgui(this);
 }
 
@@ -77,6 +83,16 @@ DemoBase::~DemoBase()
 void DemoBase::initParameters()
 {
 	ParameterObject::initParameters();
+
+	INTERPOLATION_METHOD = createBoolParameter("interpolationMethod", "Use force-based interpolation", &m_doForceBasedInterpolation);
+	setGroup(INTERPOLATION_METHOD, "Simulation|General");
+	setDescription(INTERPOLATION_METHOD, "Use force-based interpolation for rendered hairs.");
+	setHotKey(INTERPOLATION_METHOD, "f");
+
+	INTERPOLATED_HAIR_STEP_SIZE = createNumericParameter("interpolatedHairStepSize", "Interpolated hair step size", &m_interpolatedHairStepSize);
+	setGroup(INTERPOLATED_HAIR_STEP_SIZE, "Simulation|General");
+	setDescription(INTERPOLATED_HAIR_STEP_SIZE, "Specify the gap size between each rendered hair upon resetting. Smaller step sizes mean denser hairs.");
+	static_cast<NumericParameter<Real>*>(getParameter(INTERPOLATED_HAIR_STEP_SIZE))->setMinValue(0.2);
 
 	PAUSE = createBoolParameter("pause", "Pause", &m_doPause);
 	setGroup(PAUSE, "Simulation|General");
