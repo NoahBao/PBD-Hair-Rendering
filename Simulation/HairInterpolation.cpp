@@ -72,9 +72,9 @@ void RenderedHair::timeStep() {
 			Real stiffness = model->getRodStretchingStiffness();
 			const Vector3r force = -stiffness / length * ((v2 - v1) / length - tangentVec);
 			if(i == 0) {
-				forceSims[e + 1] = rootWeights[i] * force;
+				forceSims[e] = rootWeights[i] * force;
 			} else {
-				forceSims[e + 1] += rootWeights[i] * force;
+				forceSims[e] += rootWeights[i] * force;
 			}
 		}
 	}
@@ -293,13 +293,10 @@ void RenderedHair::updateRenderedHair(vector<Vector3r> netForces) {
 	Vector3r curPos = root;
 	for(int m = 0; m < netForces.size() - 1; m++) {
 		Real l_m = (restState->positions[m + 1] - restState->positions[m]).norm();
-		Vector3r fSIM_mp1 = netForces[m+1];
-		Quaternionr q_m = computeNewOrientation(m, fSIM_mp1);
-		// if(m == 1) {
-		// 	q_mm1 = restState->orientations[0];
-		// }
+		Vector3r fSIM_m = netForces[m];
+		Quaternionr q_m = computeNewOrientation(m, fSIM_m);
 		Vector3r d_m3 = computeSegmentTangentVector(q_m);
-		curPos += l_m * ((fSIM_mp1 * l_m) / kSS + d_m3);
+		curPos += l_m * ((fSIM_m * l_m) / kSS + d_m3);
 		newPositions[m+1] = curPos;
 		newOrientations[m] = q_m;
 	}

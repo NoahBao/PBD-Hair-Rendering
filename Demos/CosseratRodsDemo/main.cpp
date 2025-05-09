@@ -34,13 +34,6 @@ void reset();
 
 // list of all rendered hairs in between guide hairs
 vector<RenderedHair*> renderedHairs;
-// true if doing force-based interpolation
-// false if doing position-based interpolation
-const bool doForceBasedInterpolation = true;
-// spacing (in x and z axes) between each rendered hair
-// bigger step size means sparser rendered hairs
-// smaller step size means denser rendered hairs
-// const Real rhStepSize = 1.0;
 
 DemoBase *base;
 const unsigned int nParticles = 50;
@@ -142,12 +135,14 @@ void buildModel ()
 	Vector3r ghRoot1(0, 0, 5);
 	Vector3r ghRoot2(-2.5 * std::pow(3, 0.5), 0, -2.5);
 	Vector3r ghRoot3(2.5 * std::pow(3, 0.5), 0, -2.5);
-	createHelix(ghRoot1, helixOrientation, helixRadius, helixHeight, helixTotalAngle, nParticles);
-	createHelix(ghRoot2, helixOrientation, helixRadius * 2, helixHeight, helixTotalAngle, nParticles);
-	createHelix(ghRoot3, helixOrientation, helixRadius, helixHeight * 2, helixTotalAngle / 2, nParticles);
+	// // IDENTICAL GUIDE HAIRS
 	// createHelix(ghRoot1, helixOrientation, helixRadius, helixHeight, helixTotalAngle, nParticles);
 	// createHelix(ghRoot2, helixOrientation, helixRadius, helixHeight, helixTotalAngle, nParticles);
 	// createHelix(ghRoot3, helixOrientation, helixRadius, helixHeight, helixTotalAngle, nParticles);
+	// NON-IDENTICAL GUIDE HAIRS
+	createHelix(ghRoot1, helixOrientation, helixRadius, helixHeight, helixTotalAngle, nParticles);
+	createHelix(ghRoot2, helixOrientation, helixRadius * 2, helixHeight, helixTotalAngle, nParticles);
+	createHelix(ghRoot3, helixOrientation, helixRadius, helixHeight * 2, helixTotalAngle / 2, nParticles);
 
 	
 	// The root we specify ends up being the center of the helix,
@@ -165,6 +160,7 @@ void buildModel ()
 
 	const Real rhStepSize = base->getValue<Real>(DemoBase::INTERPOLATED_HAIR_STEP_SIZE);
 
+	// spawn in rendered hairs that are (rhStepSize) away from each other)
 	Real slope1 = (ghRoot1.z() - ghRoot2.z()) / (ghRoot1.x() - ghRoot2.x());
 	Real slope2 = (ghRoot3.z() - ghRoot1.z()) / (ghRoot3.x() - ghRoot1.x());
 	const Real xStart = rhStepSize * std::ceil(ghRoot2.x() / rhStepSize);
